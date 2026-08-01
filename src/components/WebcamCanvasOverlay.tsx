@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import type { HandLandmarker } from '@mediapipe/tasks-vision';
 import {
   BrushType,
   CanvasBackground,
@@ -113,6 +114,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
 
   const offscreenStrokesCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const landmarkerRef = useRef<HandLandmarker | null>(null);
   const backgroundRef = useRef<CanvasBackground>(background);
   const colorRef = useRef<string>(color);
   const brushSizeRef = useRef<number>(brushSize);
@@ -277,7 +279,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     redrawDrawingCanvas();
   }, [containerSize, updateStaticBuffer, redrawDrawingCanvas]);
 
-  // Start Camera Stream with optimized settings & fallback
+  // Start Camera Stream with high FPS settings & fallback
   const startCamera = async () => {
     setCameraError(null);
     let stream: MediaStream | null = null;
@@ -287,6 +289,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
           video: {
             width: { ideal: 1280 },
             height: { ideal: 720 },
+            frameRate: { ideal: 60, min: 30 },
             facingMode: 'user',
           },
           audio: false,
@@ -331,9 +334,10 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     async function init() {
       try {
         setIsLoadingModel(true);
-        await getHandLandmarker((status) => {
+        const lmInstance = await getHandLandmarker((status) => {
           if (isMounted) setModelStatusText(status);
         });
+        landmarkerRef.current = lmInstance;
         if (isMounted) {
           setIsLoadingModel(false);
           await startCamera();
@@ -360,13 +364,13 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     };
   }, []);
 
-  // Main Multi-Hand Detection & High-FPS Render Loop
+  // Main Multi-Hand Detection & Maximum FPS Render Loop
   useEffect(() => {
     if (!isWebcamStarted || isLoadingModel) return;
 
     let isSubscribed = true;
 
-    async function processVideoFrame() {
+    function processVideoFrame() {
       if (!isSubscribed) return;
 
       const video = videoRef.current;
@@ -382,11 +386,10 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
         }
 
         try {
-          // Direct WebGL texture pass when video frame updates for maximum speed & 100+ FPS rendering
-          if (video.currentTime !== lastVideoTimeRef.current) {
+          // Direct synchronous WebGL pass when new camera video frame arrives
+          if (video.currentTime !== lastVideoTimeRef.current && landmarkerRef.current) {
             lastVideoTimeRef.current = video.currentTime;
-            const landmarker = await getHandLandmarker();
-            const results = landmarker.detectForVideo(video, now);
+            const results = landmarkerRef.current.detectForVideo(video, now);
             const newDetections: HandDetectionResult[] = [];
 
             if (results.landmarks && results.landmarks.length > 0) {

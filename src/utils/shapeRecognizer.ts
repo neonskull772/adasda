@@ -1,73 +1,66 @@
 import { Point, Stroke } from '../types';
 
 export function recognizeAndSmoothShape(stroke: Stroke): Stroke {
-  if (!stroke.points || stroke.points.length < 8) return stroke;
+  if (!stroke.points || stroke.points.length < 6) return stroke;
 
   const pts = stroke.points;
   const start = pts[0];
   const end = pts[pts.length - 1];
 
-  // Calculate bounding box
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  let totalDist = 0;
-
-  for (let i = 0; i < pts.length; i++) {
-    minX = Math.min(minX, pts[i].x);
-    maxX = Math.max(maxX, pts[i].x);
-    minY = Math.min(minY, pts[i].y);
-    maxY = Math.max(maxY, pts[i].y);
-    if (i > 0) {
-      const dx = pts[i].x - pts[i - 1].x;
-      const dy = pts[i].y - pts[i - 1].y;
-      totalDist += Math.sqrt(dx * dx + dy * dy);
-    }
+  for (const p of pts) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
   }
 
   const width = maxX - minX;
   const height = maxY - minY;
   const diag = Math.sqrt(width * width + height * height);
 
-  if (diag < 15) return stroke; // Too small
+  if (diag < 10) return stroke; // Too small / speck
 
   const startEndDist = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
 
   // 1. Check for Straight Line
-  // Max deviation from straight line connecting start and end
-  let maxLineDeviation = 0;
+  let maxLineDev = 0;
   for (let i = 1; i < pts.length - 1; i++) {
     const dev = pointToSegmentDistance(pts[i], start, end);
-    maxLineDeviation = Math.max(maxLineDeviation, dev);
+    maxLineDev = Math.max(maxLineDev, dev);
   }
 
-  if (startEndDist > diag * 0.7 && maxLineDeviation < Math.max(12, diag * 0.08)) {
-    // Recognize as Straight Line
+  if (startEndDist > diag * 0.75 && maxLineDev < Math.max(10, diag * 0.08)) {
+    // Recognized as a straight line
     return {
       ...stroke,
       points: [start, end],
     };
   }
 
-  // 2. Check for Circle / Ellipse (Closed loop)
-  if (startEndDist < Math.max(25, diag * 0.25) && pts.length >= 12) {
+  // 2. Check for Closed Geometric Shapes (Circle, Rectangle)
+  const isClosed = startEndDist < Math.max(30, diag * 0.3);
+
+  if (isClosed && pts.length >= 10) {
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const rx = width / 2;
     const ry = height / 2;
 
-    // Calculate variance of normalized radius
-    let radiusVariance = 0;
+    // Check Circle/Ellipse fit score
+    let totalRadiusErr = 0;
     for (const p of pts) {
       const nx = (p.x - cx) / (rx || 1);
       const ny = (p.y - cy) / (ry || 1);
-      const normRadius = Math.sqrt(nx * nx + ny * ny);
-      radiusVariance += Math.abs(normRadius - 1);
+      const distNorm = Math.sqrt(nx * nx + ny * ny);
+      totalRadiusErr += Math.abs(distNorm - 1);
     }
-    const avgVariance = radiusVariance / pts.length;
+    const avgCircleErr = totalRadiusErr / pts.length;
 
-    if (avgVariance < 0.22) {
-      // Generate clean smoothed ellipse points
+    // Smooth Circle/Ellipse (< 0.18 variance error)
+    if (avgCircleErr < 0.18) {
       const smoothCirclePts: Point[] = [];
-      const numSteps = 40;
+      const numSteps = 36;
       for (let i = 0; i <= numSteps; i++) {
         const angle = (i / numSteps) * Math.PI * 2;
         smoothCirclePts.push({
@@ -81,8 +74,20 @@ export function recognizeAndSmoothShape(stroke: Stroke): Stroke {
       };
     }
 
-    // 3. Check for Clean Rectangle / Box
-    if (avgVariance >= 0.22) {
+    // Check Rectangle fit score (distance from points to bounding box edges)
+    let totalRectEdgeErr = 0;
+    for (const p of pts) {
+      const distToLeft = Math.abs(p.x - minX);
+      const distToRight = Math.abs(p.x - maxX);
+      const distToTop = Math.abs(p.y - minY);
+      const distToBottom = Math.abs(p.y - maxY);
+      const minDistToEdge = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+      totalRectEdgeErr += minDistToEdge;
+    }
+    const avgRectErr = totalRectEdgeErr / pts.length;
+
+    // Smooth Rectangle (< 12% diagonal distance from box perimeter)
+    if (avgRectErr < Math.max(8, diag * 0.12)) {
       const rectPts: Point[] = [
         { x: minX, y: minY },
         { x: maxX, y: minY },
@@ -97,7 +102,31 @@ export function recognizeAndSmoothShape(stroke: Stroke): Stroke {
     }
   }
 
-  return stroke;
+  // 3. Fallback for Freehand Drawings, Doodles & Curves:
+  // Apply gentle path smoothing so drawings NEVER disappear or get replaced unexpectedly!
+  return {
+    ...stroke,
+    points: smoothPathPoints(pts),
+  };
+}
+
+function smoothPathPoints(points: Point[]): Point[] {
+  if (points.length <= 3) return points;
+  const smoothed: Point[] = [points[0]];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    smoothed.push({
+      x: prev.x * 0.2 + curr.x * 0.6 + next.x * 0.2,
+      y: prev.y * 0.2 + curr.y * 0.6 + next.y * 0.2,
+    });
+  }
+
+  smoothed.push(points[points.length - 1]);
+  return smoothed;
 }
 
 function pointToSegmentDistance(p: Point, a: Point, b: Point): number {

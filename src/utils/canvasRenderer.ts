@@ -333,6 +333,15 @@ export function drawGrippedStrokesHighlight(
   ctx.restore();
 }
 
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
+  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
+  [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
+  [0, 17],                             // Palm base
+];
+
 export function drawMultiHandOverlay(
   ctx: CanvasRenderingContext2D,
   detections: HandDetectionResult[],
@@ -364,15 +373,6 @@ export function drawMultiHandOverlay(
       x: isMirrored ? (1 - lm.x) * width : lm.x * width,
       y: lm.y * height,
     });
-
-    const HAND_CONNECTIONS = [
-      [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
-      [0, 5], [5, 6], [6, 7], [7, 8],       // Index
-      [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
-      [9, 13], [13, 14], [14, 15], [15, 16],// Ring
-      [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
-      [0, 17],                             // Palm base
-    ];
 
     // Hand-specific primary colors (Indigo for Hand 1, Cyan/Pink for Hand 2)
     const primaryColor = dIdx === 0 ? 'rgba(99, 102, 241, 0.7)' : 'rgba(236, 72, 153, 0.7)';
