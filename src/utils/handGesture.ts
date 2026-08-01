@@ -1,4 +1,120 @@
-import { GestureType, HandDetectionResult, HandLandmark, Point } from '../types';
+import { GestureType, HandDetectionResult, HandLandmark, Point, Stroke } from '../types';
+
+export function doStrokesIntersect(s1: Stroke, s2: Stroke, threshold: number = 25): boolean {
+  if (!s1.points || !s2.points || !s1.points.length || !s2.points.length) return false;
+
+  let minX1 = Infinity, maxX1 = -Infinity, minY1 = Infinity, maxY1 = -Infinity;
+  for (let i = 0; i < s1.points.length; i++) {
+    const p = s1.points[i];
+    if (p.x < minX1) minX1 = p.x;
+    if (p.x > maxX1) maxX1 = p.x;
+    if (p.y < minY1) minY1 = p.y;
+    if (p.y > maxY1) maxY1 = p.y;
+  }
+
+  let minX2 = Infinity, maxX2 = -Infinity, minY2 = Infinity, maxY2 = -Infinity;
+  for (let i = 0; i < s2.points.length; i++) {
+    const p = s2.points[i];
+    if (p.x < minX2) minX2 = p.x;
+    if (p.x > maxX2) maxX2 = p.x;
+    if (p.y < minY2) minY2 = p.y;
+    if (p.y > maxY2) maxY2 = p.y;
+  }
+
+  const effectiveThreshold = threshold + Math.max(s1.size || 5, s2.size || 5) / 2;
+
+  if (
+    maxX1 + effectiveThreshold < minX2 ||
+    minX2 - effectiveThreshold > maxX1 ||
+    maxY1 + effectiveThreshold < minY2 ||
+    minY2 - effectiveThreshold > maxY1
+  ) {
+    return false;
+  }
+
+  const step1 = Math.max(1, Math.floor(s1.points.length / 40));
+  const step2 = Math.max(1, Math.floor(s2.points.length / 40));
+
+  const threshSq = effectiveThreshold * effectiveThreshold;
+
+  for (let i = 0; i < s1.points.length; i += step1) {
+    const p1 = s1.points[i];
+    for (let j = 0; j < s2.points.length; j += step2) {
+      const p2 = s2.points[j];
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      if (dx * dx + dy * dy <= threshSq) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function getConnectedStrokeGroup(startStrokeId: string, allStrokes: Stroke[]): Stroke[] {
+  const startStroke = allStrokes.find((s) => s.id === startStrokeId);
+  if (!startStroke) return [];
+
+  const visited = new Set<string>([startStrokeId]);
+  const queue: Stroke[] = [startStroke];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const other of allStrokes) {
+      if (!visited.has(other.id)) {
+        if (doStrokesIntersect(current, other)) {
+          visited.add(other.id);
+          queue.push(other);
+        }
+      }
+    }
+  }
+
+  return allStrokes.filter((s) => visited.has(s.id));
+}
+
+export function rotateStrokesGroup(
+  strokes: Stroke[],
+  strokeIds: Set<string>,
+  pivot: Point,
+  angleRad: number
+) {
+  if (angleRad === 0 || strokeIds.size === 0) return;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+
+  for (let i = 0; i < strokes.length; i++) {
+    const s = strokes[i];
+    if (strokeIds.has(s.id)) {
+      for (let j = 0; j < s.points.length; j++) {
+        const pt = s.points[j];
+        const rx = pt.x - pivot.x;
+        const ry = pt.y - pivot.y;
+        pt.x = pivot.x + (rx * cosA - ry * sinA);
+        pt.y = pivot.y + (rx * sinA + ry * cosA);
+      }
+    }
+  }
+}
+
+export function translateStrokesGroup(
+  strokes: Stroke[],
+  strokeIds: Set<string>,
+  dx: number,
+  dy: number
+) {
+  if ((dx === 0 && dy === 0) || strokeIds.size === 0) return;
+  for (let i = 0; i < strokes.length; i++) {
+    const s = strokes[i];
+    if (strokeIds.has(s.id)) {
+      for (let j = 0; j < s.points.length; j++) {
+        s.points[j].x += dx;
+        s.points[j].y += dy;
+      }
+    }
+  }
+}
 
 export function euclideanDistance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
   const dx = p1.x - p2.x;

@@ -8,7 +8,13 @@ import {
   Point,
   Stroke,
 } from '../types';
-import { analyzeHandLandmarks, PointSmoother } from '../utils/handGesture';
+import {
+  analyzeHandLandmarks,
+  PointSmoother,
+  getConnectedStrokeGroup,
+  rotateStrokesGroup,
+  translateStrokesGroup,
+} from '../utils/handGesture';
 import { drawMultiHandOverlay, renderBackground, renderStroke } from '../utils/canvasRenderer';
 import { getHandLandmarker } from '../utils/mediaPipeService';
 import { AirButtonsOverlay } from './AirButtonsOverlay';
@@ -82,6 +88,18 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
   const activeStrokeRef1 = useRef<Stroke | null>(null);
   const activeStrokeRef2 = useRef<Stroke | null>(null);
 
+  const grippedStrokeIdsRef = useRef<Set<string>>(new Set());
+  const lastGripPosRef = useRef<Point | null>(null);
+  const lastAngleRef = useRef<number | null>(null);
+  const totalRotationDegRef = useRef<number>(0);
+  const rotationInfoRef = useRef<{ p1: Point; p2: Point; angleDeg: number } | null>(null);
+  const gripGraceCountRef = useRef<number>(0);
+  const strokesRef = useRef<Stroke[]>(strokes);
+
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
+
   const lastDetectionsRef = useRef<HandDetectionResult[]>([]);
   const animFrameIdRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(performance.now());
@@ -123,7 +141,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
   }, []);
 
   // Update static canvas buffer when background or strokes change
-  const updateStaticBuffer = useCallback(() => {
+  const updateStaticBuffer = useCallback((customStrokes?: Stroke[]) => {
     const staticCanvas = staticCanvasRef.current;
     if (!staticCanvas || containerSize.width === 0 || containerSize.height === 0) return;
 
@@ -137,10 +155,11 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
 
     renderBackground(ctx, containerSize.width, containerSize.height, background);
 
-    for (const stroke of strokes) {
+    const strokeList = customStrokes || strokesRef.current;
+    for (const stroke of strokeList) {
       renderStroke(ctx, stroke);
     }
-  }, [background, strokes, containerSize]);
+  }, [background, containerSize]);
 
   // Redraw main drawing canvas from static buffer + current active strokes (Hand 1 & Hand 2)
   const redrawDrawingCanvas = useCallback(() => {
@@ -277,7 +296,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
         try {
           const landmarker = await getHandLandmarker();
 
-          // Direct HTMLVideoElement hardware texture pass to MediaPipe for ultra-high FPS
+          // Direct Hardware Video Texture Pass to MediaPipe for unthrottled 100+ FPS vision inference
           const results = landmarker.detectForVideo(video, now);
           const detections: HandDetectionResult[] = [];
 
@@ -299,6 +318,99 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
 
             const prevDetections = lastDetectionsRef.current;
             lastDetectionsRef.current = detections;
+
+            // Check for Fist Grip Stroke Movement & Dual-Hand Rotation
+            const fistDetection = detections.find(
+              (d) => d.gesture === 'fist' || (gestureMode === 'fist_grip' && d.isDrawing)
+            );
+
+            if (fistDetection) {
+              gripGraceCountRef.current = 0;
+              const gripPos = fistDetection.indexTip;
+
+              // If not already gripping a group, find nearest stroke and form connected cluster
+              if (grippedStrokeIdsRef.current.size === 0) {
+                let minDist = Infinity;
+                let nearestId: string | null = null;
+                for (const stroke of strokesRef.current) {
+                  for (const pt of stroke.points) {
+                    const dist = Math.hypot(pt.x - gripPos.x, pt.y - gripPos.y);
+                    if (dist < minDist) {
+                      minDist = dist;
+                      nearestId = stroke.id;
+                    }
+                  }
+                }
+                if (minDist <= 140 && nearestId) {
+                  const group = getConnectedStrokeGroup(nearestId, strokesRef.current);
+                  const groupIds = new Set(group.map((s) => s.id));
+                  grippedStrokeIdsRef.current = groupIds;
+                  lastGripPosRef.current = { ...gripPos };
+                  lastAngleRef.current = null;
+                  totalRotationDegRef.current = 0;
+                }
+              }
+
+              if (grippedStrokeIdsRef.current.size > 0 && lastGripPosRef.current) {
+                let movedOrRotated = false;
+
+                // 1. Translation via Hand 1
+                const dx = gripPos.x - lastGripPosRef.current.x;
+                const dy = gripPos.y - lastGripPosRef.current.y;
+
+                if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+                  translateStrokesGroup(strokesRef.current, grippedStrokeIdsRef.current, dx, dy);
+                  lastGripPosRef.current = { ...gripPos };
+                  movedOrRotated = true;
+                }
+
+                // 2. Rotation via Hand 2
+                const secondHand = detections.find((d) => d !== fistDetection);
+                if (secondHand) {
+                  const p2 = secondHand.indexTip;
+                  const currentAngle = Math.atan2(p2.y - gripPos.y, p2.x - gripPos.x);
+
+                  if (lastAngleRef.current !== null) {
+                    let deltaAngle = currentAngle - lastAngleRef.current;
+                    if (deltaAngle > Math.PI) deltaAngle -= Math.PI * 2;
+                    if (deltaAngle < -Math.PI) deltaAngle += Math.PI * 2;
+
+                    if (Math.abs(deltaAngle) > 0.002) {
+                      rotateStrokesGroup(strokesRef.current, grippedStrokeIdsRef.current, gripPos, deltaAngle);
+                      totalRotationDegRef.current =
+                        ((totalRotationDegRef.current + (deltaAngle * 180) / Math.PI) % 360 + 360) % 360;
+                      movedOrRotated = true;
+                    }
+                  }
+
+                  lastAngleRef.current = currentAngle;
+                  rotationInfoRef.current = {
+                    p1: gripPos,
+                    p2: p2,
+                    angleDeg: totalRotationDegRef.current,
+                  };
+                } else {
+                  lastAngleRef.current = null;
+                  rotationInfoRef.current = null;
+                }
+
+                if (movedOrRotated) {
+                  updateStaticBuffer(strokesRef.current);
+                }
+              }
+            } else if (grippedStrokeIdsRef.current.size > 0) {
+              // Grace period: allow 8 transient frames before releasing grip
+              gripGraceCountRef.current += 1;
+              if (gripGraceCountRef.current >= 8) {
+                grippedStrokeIdsRef.current.clear();
+                lastGripPosRef.current = null;
+                lastAngleRef.current = null;
+                rotationInfoRef.current = null;
+                gripGraceCountRef.current = 0;
+                setStrokes([...strokesRef.current]);
+                updateStaticBuffer(strokesRef.current);
+              }
+            }
 
             // Process Hand 1 Stroke
             const det1 = detections[0];
@@ -379,6 +491,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
             }
 
             // Draw Multi-Hand Overlay Skeletons & Cursors
+            const grippedStrokes = strokesRef.current.filter((s) => grippedStrokeIdsRef.current.has(s.id));
             if (overlayCanvas) {
               const ctx = overlayCanvas.getContext('2d');
               if (ctx) {
@@ -388,12 +501,26 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
                   containerSize.width,
                   containerSize.height,
                   showSkeleton,
-                  isMirrored
+                  isMirrored,
+                  grippedStrokes,
+                  rotationInfoRef.current
                 );
               }
             }
           } else {
-            // No Hands Detected
+            // No Hands Detected - apply grace timeout
+            if (grippedStrokeIdsRef.current.size > 0) {
+              gripGraceCountRef.current += 1;
+              if (gripGraceCountRef.current >= 8) {
+                grippedStrokeIdsRef.current.clear();
+                lastGripPosRef.current = null;
+                lastAngleRef.current = null;
+                rotationInfoRef.current = null;
+                gripGraceCountRef.current = 0;
+                setStrokes([...strokesRef.current]);
+                updateStaticBuffer(strokesRef.current);
+              }
+            }
             if (activeStrokeRef1.current) {
               const finishedStroke = { ...activeStrokeRef1.current };
               activeStrokeRef1.current = null;

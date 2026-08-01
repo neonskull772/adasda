@@ -1,6 +1,6 @@
 export type BrushType = 'solid' | 'neon' | 'rainbow' | 'sparkles' | 'calligraphy' | 'highlighter' | 'eraser';
 
-export type GestureMode = 'pinch' | 'pointing' | 'peace_hover';
+export type GestureMode = 'pinch' | 'pointing' | 'peace_hover' | 'fist_grip';
 
 export type CanvasBackground = 'transparent' | 'dark' | 'light' | 'grid' | 'dots' | 'neon_grid';
 

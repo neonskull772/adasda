@@ -29,9 +29,9 @@ export async function getHandLandmarker(onProgress?: (status: string) => void): 
           },
           runningMode: 'VIDEO',
           numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.4,
-          minTrackingConfidence: 0.4,
+          minHandDetectionConfidence: 0.35,
+          minHandPresenceConfidence: 0.35,
+          minTrackingConfidence: 0.35,
         });
       } catch (gpuErr) {
         console.warn('GPU acceleration fallback to CPU:', gpuErr);
@@ -44,9 +44,9 @@ export async function getHandLandmarker(onProgress?: (status: string) => void): 
           },
           runningMode: 'VIDEO',
           numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.4,
-          minTrackingConfidence: 0.4,
+          minHandDetectionConfidence: 0.35,
+          minHandPresenceConfidence: 0.35,
+          minTrackingConfidence: 0.35,
         });
       }
 

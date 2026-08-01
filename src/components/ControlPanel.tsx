@@ -303,7 +303,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           {/* TAB 3: GESTURE CONFIGURATION */}
           {activeTab === 'gestures' && (
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   onClick={() => setGestureMode('pinch')}
                   className={`p-2.5 rounded-xl text-xs font-medium text-center border transition ${
@@ -338,6 +338,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 >
                   <div className="font-semibold text-sm mb-0.5">✌️ Peace Hover</div>
                   <div className="text-[10px] text-white/50">2 Fingers Hover</div>
+                </button>
+
+                <button
+                  onClick={() => setGestureMode('fist_grip')}
+                  className={`p-2.5 rounded-xl text-xs font-medium text-center border transition ${
+                    gestureMode === 'fist_grip'
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-400/40 shadow-lg shadow-purple-500/10'
+                      : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="font-semibold text-sm mb-0.5">✊ Fist Grip</div>
+                  <div className="text-[10px] text-white/50">Grip & Move</div>
                 </button>
               </div>
 

@@ -1,4 +1,4 @@
-import { BrushType, CanvasBackground, HandDetectionResult, HandLandmark, Stroke } from '../types';
+import { BrushType, CanvasBackground, HandDetectionResult, HandLandmark, Point, Stroke } from '../types';
 
 export function renderBackground(
   ctx: CanvasRenderingContext2D,
@@ -235,16 +235,127 @@ function drawSparkleStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
   ctx.restore();
 }
 
+export function drawGrippedStrokesHighlight(
+  ctx: CanvasRenderingContext2D,
+  strokes: Stroke[]
+) {
+  if (!strokes || strokes.length === 0) return;
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let maxSize = 12;
+
+  for (const stroke of strokes) {
+    if (!stroke || !stroke.points) continue;
+    if (stroke.size > maxSize) maxSize = stroke.size;
+    for (const pt of stroke.points) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+  }
+
+  if (minX === Infinity) return;
+
+  const padding = Math.max(14, maxSize);
+  minX -= padding; maxX += padding;
+  minY -= padding; maxY += padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  ctx.save();
+  ctx.strokeStyle = '#a855f7';
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([6, 6]);
+  ctx.shadowColor = '#a855f7';
+  ctx.shadowBlur = 14;
+
+  ctx.strokeRect(minX, minY, width, height);
+
+  // Corner Accents
+  ctx.fillStyle = '#a855f7';
+  ctx.setLineDash([]);
+  const size = 6;
+  ctx.fillRect(minX - size / 2, minY - size / 2, size, size);
+  ctx.fillRect(maxX - size / 2, minY - size / 2, size, size);
+  ctx.fillRect(minX - size / 2, maxY - size / 2, size, size);
+  ctx.fillRect(maxX - size / 2, maxY - size / 2, size, size);
+
+  // Label tag above box
+  ctx.fillStyle = 'rgba(168, 85, 247, 0.95)';
+  ctx.font = 'bold 11px sans-serif';
+  const label = strokes.length > 1 ? `✊ GRIPPED (${strokes.length} STROKES)` : '✊ GRIPPED STROKE';
+  const textWidth = ctx.measureText(label).width;
+  const tagX = minX;
+  const tagY = Math.max(20, minY - 8);
+
+  ctx.fillRect(tagX, tagY - 14, textWidth + 12, 18);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, tagX + 6, tagY);
+
+  ctx.restore();
+}
+
 export function drawMultiHandOverlay(
   ctx: CanvasRenderingContext2D,
   detections: HandDetectionResult[],
   width: number,
   height: number,
   showSkeleton: boolean = true,
-  isMirrored: boolean = true
+  isMirrored: boolean = true,
+  grippedStrokes?: Stroke[] | null,
+  rotationInfo?: { p1: Point; p2: Point; angleDeg: number } | null
 ) {
   ctx.save();
   ctx.clearRect(0, 0, width, height);
+
+  if (grippedStrokes && grippedStrokes.length > 0) {
+    drawGrippedStrokesHighlight(ctx, grippedStrokes);
+  }
+
+  // Draw Dual-Hand Rotation Beam & Gauge HUD
+  if (rotationInfo && rotationInfo.p1 && rotationInfo.p2) {
+    const { p1, p2, angleDeg } = rotationInfo;
+    ctx.save();
+    
+    // Laser connecting beam
+    const gradient = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+    gradient.addColorStop(0, '#a855f7');
+    gradient.addColorStop(0.5, '#ec4899');
+    gradient.addColorStop(1, '#3b82f6');
+
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.shadowColor = '#ec4899';
+    ctx.shadowBlur = 12;
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    // Pivot Ring around Hand 1
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p1.x, p1.y, 24, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Hand 2 Rotation Badge
+    ctx.fillStyle = 'rgba(236, 72, 153, 0.9)';
+    ctx.font = 'bold 12px sans-serif';
+    const label = `🔄 ROTATE ${Math.round(angleDeg)}°`;
+    const tw = ctx.measureText(label).width;
+    ctx.fillRect(p2.x - tw / 2 - 8, p2.y - 32, tw + 16, 22);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, p2.x, p2.y - 17);
+
+    ctx.restore();
+  }
 
   if (!detections || detections.length === 0) {
     ctx.restore();
@@ -312,7 +423,23 @@ export function drawMultiHandOverlay(
       }
 
       ctx.save();
-      if (detection.isDrawing) {
+      if (detection.gesture === 'fist') {
+        ctx.shadowColor = '#a855f7';
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.5)';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+
+        ctx.beginPath();
+        ctx.arc(indexPt.x, indexPt.y, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✊', indexPt.x, indexPt.y);
+      } else if (detection.isDrawing) {
         ctx.shadowColor = '#22c55e';
         ctx.shadowBlur = 15;
         ctx.fillStyle = '#22c55e';

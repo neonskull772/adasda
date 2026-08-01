@@ -83,6 +83,18 @@ export const GestureGuideModal: React.FC<GestureGuideModalProps> = ({
           </div>
 
           <div className="flex items-start gap-3 p-3.5 bg-white/5 rounded-2xl border border-white/10">
+            <div className="text-2xl p-2 bg-white/10 rounded-xl border border-white/10">✊👐</div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Fist Grip & Dual-Hand Rotation <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30">Grab & Rotate</span>
+              </h3>
+              <p className="text-xs text-white/70 mt-0.5">
+                Make a fist ✊ near any stroke to grab it and all connected intersecting strokes. Move hand to drag! Bring in your second hand ✋ and move around the fist to rotate the strokes in 360° real-time!
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 p-3.5 bg-white/5 rounded-2xl border border-white/10">
             <div className="text-2xl p-2 bg-white/10 rounded-xl border border-white/10">✌️</div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">

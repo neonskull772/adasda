@@ -52,6 +52,15 @@ export const Header: React.FC<HeaderProps> = ({
       );
     }
 
+    if (activeGesture === 'fist') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-xl bg-purple-500/20 text-purple-300 border border-purple-400/30">
+          <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+          ✊ Fist Grip (Moving)
+        </span>
+      );
+    }
+
     if (isDrawing) {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
