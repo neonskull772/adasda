@@ -19,7 +19,8 @@ export function analyzeHandLandmarks(
   videoHeight: number,
   pinchThreshold: number = 0.08,
   gestureMode: 'pinch' | 'pointing' | 'peace_hover' = 'pinch',
-  isMirrored: boolean = true
+  isMirrored: boolean = true,
+  handednessLabel?: string
 ): HandDetectionResult {
   if (!landmarks || landmarks.length < 21) {
     return {
@@ -103,6 +104,14 @@ export function analyzeHandLandmarks(
   const wristPixelX = isMirrored ? (1 - wrist.x) * videoWidth : wrist.x * videoWidth;
   const wristPixelY = wrist.y * videoHeight;
 
+  let handSide: 'Left' | 'Right' | 'Unknown' = 'Unknown';
+  if (handednessLabel) {
+    if (handednessLabel.toLowerCase().includes('left')) handSide = isMirrored ? 'Right' : 'Left';
+    else if (handednessLabel.toLowerCase().includes('right')) handSide = isMirrored ? 'Left' : 'Right';
+  } else {
+    handSide = landmarks[17].x < landmarks[5].x ? 'Right' : 'Left';
+  }
+
   return {
     landmarks,
     gesture,
@@ -111,20 +120,20 @@ export function analyzeHandLandmarks(
     thumbTip: { x: thumbPixelX, y: thumbPixelY },
     wrist: { x: wristPixelX, y: wristPixelY },
     isDrawing,
-    handSide: landmarks[17].x < landmarks[5].x ? 'Right' : 'Left',
+    handSide,
   };
 }
 
 export class PointSmoother {
   private prevPoint: Point | null = null;
-  private smoothingFactor: number;
+  private baseFactor: number;
 
-  constructor(smoothingFactor: number = 0.35) {
-    this.smoothingFactor = Math.max(0.05, Math.min(1, smoothingFactor));
+  constructor(baseFactor: number = 0.4) {
+    this.baseFactor = Math.max(0.05, Math.min(1, baseFactor));
   }
 
   public setSmoothingFactor(factor: number) {
-    this.smoothingFactor = Math.max(0.05, Math.min(1, factor));
+    this.baseFactor = Math.max(0.05, Math.min(1, factor));
   }
 
   public smooth(currentPoint: Point): Point {
@@ -133,9 +142,13 @@ export class PointSmoother {
       return currentPoint;
     }
 
+    const dist = euclideanDistance(currentPoint, this.prevPoint);
+    // Velocity adaptive alpha: boost responsiveness when hand moves fast (>15px)
+    const velocityFactor = Math.min(0.85, this.baseFactor + Math.min(0.5, dist / 30));
+
     const smoothed: Point = {
-      x: this.prevPoint.x + (currentPoint.x - this.prevPoint.x) * this.smoothingFactor,
-      y: this.prevPoint.y + (currentPoint.y - this.prevPoint.y) * this.smoothingFactor,
+      x: this.prevPoint.x + (currentPoint.x - this.prevPoint.x) * velocityFactor,
+      y: this.prevPoint.y + (currentPoint.y - this.prevPoint.y) * velocityFactor,
       pressure: currentPoint.pressure,
       timestamp: currentPoint.timestamp || Date.now(),
     };

@@ -235,9 +235,9 @@ function drawSparkleStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
   ctx.restore();
 }
 
-export function drawHandOverlay(
+export function drawMultiHandOverlay(
   ctx: CanvasRenderingContext2D,
-  detection: HandDetectionResult,
+  detections: HandDetectionResult[],
   width: number,
   height: number,
   showSkeleton: boolean = true,
@@ -246,113 +246,111 @@ export function drawHandOverlay(
   ctx.save();
   ctx.clearRect(0, 0, width, height);
 
-  if (!detection || detection.landmarks.length < 21) {
+  if (!detections || detections.length === 0) {
     ctx.restore();
     return;
   }
 
-  const landmarks = detection.landmarks;
+  for (let dIdx = 0; dIdx < detections.length; dIdx++) {
+    const detection = detections[dIdx];
+    if (!detection || detection.landmarks.length < 21) continue;
 
-  // Transform coordinates for pixel space
-  const getPixel = (lm: HandLandmark) => {
-    return {
+    const landmarks = detection.landmarks;
+
+    const getPixel = (lm: HandLandmark) => ({
       x: isMirrored ? (1 - lm.x) * width : lm.x * width,
       y: lm.y * height,
-    };
-  };
+    });
 
-  // Hand skeleton connections
-  const HAND_CONNECTIONS = [
-    [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
-    [0, 5], [5, 6], [6, 7], [7, 8],       // Index
-    [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
-    [9, 13], [13, 14], [14, 15], [15, 16],// Ring
-    [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
-    [0, 17],                             // Palm base
-  ];
+    const HAND_CONNECTIONS = [
+      [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+      [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+      [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
+      [9, 13], [13, 14], [14, 15], [15, 16],// Ring
+      [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
+      [0, 17],                             // Palm base
+    ];
 
-  if (showSkeleton) {
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+    // Hand-specific primary colors (Indigo for Hand 1, Cyan/Pink for Hand 2)
+    const primaryColor = dIdx === 0 ? 'rgba(99, 102, 241, 0.7)' : 'rgba(236, 72, 153, 0.7)';
+    const tipColor = dIdx === 0 ? '#6366f1' : '#ec4899';
 
-    for (const [i, j] of HAND_CONNECTIONS) {
-      const p1 = getPixel(landmarks[i]);
-      const p2 = getPixel(landmarks[j]);
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
-    }
-
-    // Draw joints
-    for (let i = 0; i < landmarks.length; i++) {
-      const pt = getPixel(landmarks[i]);
-      ctx.fillStyle = i === 8 ? '#06b6d4' : i === 4 ? '#ec4899' : 'rgba(255, 255, 255, 0.8)';
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, i === 8 || i === 4 ? 6 : 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Draw Pinch Indicator / Cursor ring
-  const indexPt = detection.indexTip;
-  const thumbPt = detection.thumbTip;
-
-  if (indexPt && indexPt.x > 0) {
-    // Connect thumb and index if near pinch
-    if (detection.pinchDistance < 0.2) {
-      ctx.strokeStyle = detection.isDrawing ? 'rgba(34, 197, 94, 0.8)' : 'rgba(234, 179, 8, 0.6)';
+    if (showSkeleton) {
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(indexPt.x, indexPt.y);
-      ctx.lineTo(thumbPt.x, thumbPt.y);
-      ctx.stroke();
+      ctx.strokeStyle = primaryColor;
+
+      for (const [i, j] of HAND_CONNECTIONS) {
+        const p1 = getPixel(landmarks[i]);
+        const p2 = getPixel(landmarks[j]);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < landmarks.length; i++) {
+        const pt = getPixel(landmarks[i]);
+        ctx.fillStyle = i === 8 ? tipColor : i === 4 ? '#f59e0b' : 'rgba(255, 255, 255, 0.85)';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, i === 8 || i === 4 ? 6 : 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // Draw Cursor at Index Tip
-    ctx.save();
-    if (detection.isDrawing) {
-      // Drawing state: Green glowing target
-      ctx.shadowColor = '#22c55e';
-      ctx.shadowBlur = 15;
-      ctx.fillStyle = '#22c55e';
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
+    // Cursor & Pinch Ring Indicator
+    const indexPt = detection.indexTip;
+    const thumbPt = detection.thumbTip;
 
-      ctx.beginPath();
-      ctx.arc(indexPt.x, indexPt.y, 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+    if (indexPt && indexPt.x > 0) {
+      if (detection.pinchDistance < 0.2) {
+        ctx.strokeStyle = detection.isDrawing ? 'rgba(34, 197, 94, 0.8)' : 'rgba(234, 179, 8, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(indexPt.x, indexPt.y);
+        ctx.lineTo(thumbPt.x, thumbPt.y);
+        ctx.stroke();
+      }
 
-      // Outer pulse
-      ctx.beginPath();
-      ctx.arc(indexPt.x, indexPt.y, 16, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    } else {
-      // Hovering state: Blue/Cyan circle
-      ctx.shadowColor = '#06b6d4';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 2;
+      ctx.save();
+      if (detection.isDrawing) {
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#22c55e';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
 
-      ctx.beginPath();
-      ctx.arc(indexPt.x, indexPt.y, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(indexPt.x, indexPt.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
 
-      // Pinch meter progress around hover cursor
-      const maxDist = 0.2;
-      const progress = Math.max(0, Math.min(1, 1 - detection.pinchDistance / maxDist));
-      ctx.beginPath();
-      ctx.arc(indexPt.x, indexPt.y, 15, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-      ctx.strokeStyle = '#eab308';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(indexPt.x, indexPt.y, 16, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        ctx.shadowColor = tipColor;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.3)';
+        ctx.strokeStyle = tipColor;
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.arc(indexPt.x, indexPt.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        const maxDist = 0.2;
+        const progress = Math.max(0, Math.min(1, 1 - detection.pinchDistance / maxDist));
+        ctx.beginPath();
+        ctx.arc(indexPt.x, indexPt.y, 15, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+        ctx.strokeStyle = '#eab308';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   ctx.restore();

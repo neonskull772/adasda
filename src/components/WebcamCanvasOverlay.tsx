@@ -9,7 +9,7 @@ import {
   Stroke,
 } from '../types';
 import { analyzeHandLandmarks, PointSmoother } from '../utils/handGesture';
-import { drawHandOverlay, renderBackground, renderStroke } from '../utils/canvasRenderer';
+import { drawMultiHandOverlay, renderBackground, renderStroke } from '../utils/canvasRenderer';
 import { getHandLandmarker } from '../utils/mediaPipeService';
 import { AirButtonsOverlay } from './AirButtonsOverlay';
 import { Camera, CameraOff, RefreshCw, AlertTriangle, Fullscreen } from 'lucide-react';
@@ -77,9 +77,12 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
   const inferenceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const staticCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const smootherRef = useRef<PointSmoother>(new PointSmoother(smoothingFactor));
-  const activeStrokeRef = useRef<Stroke | null>(null);
-  const lastDetectionRef = useRef<HandDetectionResult | null>(null);
+  const smootherRefHand1 = useRef<PointSmoother>(new PointSmoother(smoothingFactor));
+  const smootherRefHand2 = useRef<PointSmoother>(new PointSmoother(smoothingFactor));
+  const activeStrokeRef1 = useRef<Stroke | null>(null);
+  const activeStrokeRef2 = useRef<Stroke | null>(null);
+
+  const lastDetectionsRef = useRef<HandDetectionResult[]>([]);
   const animFrameIdRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(performance.now());
   const frameCountRef = useRef<number>(0);
@@ -96,9 +99,10 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     inferenceCanvasRef.current.height = 360;
   }
 
-  // Update smoother configuration when smoothing factor changes
+  // Update smoother configurations when smoothing factor changes
   useEffect(() => {
-    smootherRef.current.setSmoothingFactor(smoothingFactor);
+    smootherRefHand1.current.setSmoothingFactor(smoothingFactor);
+    smootherRefHand2.current.setSmoothingFactor(smoothingFactor);
   }, [smoothingFactor]);
 
   // Handle Container Resize with ResizeObserver
@@ -138,7 +142,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     }
   }, [background, strokes, containerSize]);
 
-  // Redraw main drawing canvas from static buffer + current active stroke
+  // Redraw main drawing canvas from static buffer + current active strokes (Hand 1 & Hand 2)
   const redrawDrawingCanvas = useCallback(() => {
     const canvas = drawingCanvasRef.current;
     const staticCanvas = staticCanvasRef.current;
@@ -149,12 +153,13 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(staticCanvas, 0, 0);
 
-    if (activeStrokeRef.current) {
-      renderStroke(ctx, activeStrokeRef.current);
-    } else if (currentStroke) {
-      renderStroke(ctx, currentStroke);
+    if (activeStrokeRef1.current) {
+      renderStroke(ctx, activeStrokeRef1.current);
     }
-  }, [drawingCanvasRef, currentStroke]);
+    if (activeStrokeRef2.current) {
+      renderStroke(ctx, activeStrokeRef2.current);
+    }
+  }, [drawingCanvasRef]);
 
   // Synchronize canvas resolutions on container resize or background change
   useEffect(() => {
@@ -179,15 +184,15 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     redrawDrawingCanvas();
   }, [containerSize, updateStaticBuffer, redrawDrawingCanvas]);
 
-  // Start Camera Stream
+  // Start Camera Stream with optimized frameRate settings
   const startCamera = async () => {
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60, max: 60 },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 60, min: 30 },
           facingMode: 'user',
         },
         audio: false,
@@ -248,7 +253,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     };
   }, []);
 
-  // Main Detection Loop
+  // Main Multi-Hand Detection & High-FPS Render Loop
   useEffect(() => {
     if (!isWebcamStarted || isLoadingModel) return;
 
@@ -272,92 +277,114 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
         try {
           const landmarker = await getHandLandmarker();
 
-          // Prepare downscaled inference frame for high-FPS MediaPipe vision processing
-          const infCanvas = inferenceCanvasRef.current;
-          let inputSource: HTMLVideoElement | HTMLCanvasElement = video;
-          if (infCanvas) {
-            const infCtx = infCanvas.getContext('2d');
-            if (infCtx) {
-              infCtx.drawImage(video, 0, 0, infCanvas.width, infCanvas.height);
-              inputSource = infCanvas;
-            }
-          }
-
-          const results = landmarker.detectForVideo(inputSource, now);
+          // Direct HTMLVideoElement hardware texture pass to MediaPipe for ultra-high FPS
+          const results = landmarker.detectForVideo(video, now);
+          const detections: HandDetectionResult[] = [];
 
           if (results.landmarks && results.landmarks.length > 0) {
-            const rawLandmarks = results.landmarks[0];
-            const detection = analyzeHandLandmarks(
-              rawLandmarks,
-              containerSize.width,
-              containerSize.height,
-              pinchThreshold,
-              gestureMode,
-              isMirrored
-            );
-
-            // Throttle React state telemetry to prevent 60Hz DOM rerender overhead
-            if (
-              now - lastReactHandUpdateRef.current > 50 ||
-              !lastDetectionRef.current ||
-              lastDetectionRef.current.gesture !== detection.gesture ||
-              lastDetectionRef.current.isDrawing !== detection.isDrawing
-            ) {
-              onHandUpdate(detection, fpsRef.current);
-              lastReactHandUpdateRef.current = now;
+            for (let i = 0; i < results.landmarks.length; i++) {
+              const rawLandmarks = results.landmarks[i];
+              const handednessLabel = results.handedness?.[i]?.[0]?.categoryName;
+              const detection = analyzeHandLandmarks(
+                rawLandmarks,
+                containerSize.width,
+                containerSize.height,
+                pinchThreshold,
+                gestureMode,
+                isMirrored,
+                handednessLabel
+              );
+              detections.push(detection);
             }
 
-            lastDetectionRef.current = detection;
+            const prevDetections = lastDetectionsRef.current;
+            lastDetectionsRef.current = detections;
 
-            // Handle Air Stroke Creation & Incremental Direct Canvas Rendering
-            if (detection.isDrawing) {
-              const rawPt: Point = detection.indexTip;
-              const smoothedPt = smootherRef.current.smooth(rawPt);
+            // Process Hand 1 Stroke
+            const det1 = detections[0];
+            if (det1 && det1.isDrawing) {
+              const rawPt: Point = det1.indexTip;
+              const smoothedPt = smootherRefHand1.current.smooth(rawPt);
 
-              if (!activeStrokeRef.current) {
-                // New Active Stroke
+              if (!activeStrokeRef1.current) {
                 const newStroke: Stroke = {
-                  id: 'stroke_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                  id: 'stroke_h1_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                   points: [smoothedPt],
                   color,
                   size: brushSize,
                   opacity,
                   brushType,
                 };
-                activeStrokeRef.current = newStroke;
+                activeStrokeRef1.current = newStroke;
               } else {
-                // Append point directly to active stroke points array
-                activeStrokeRef.current.points.push(smoothedPt);
+                activeStrokeRef1.current.points.push(smoothedPt);
               }
+            } else if (activeStrokeRef1.current) {
+              const finishedStroke = { ...activeStrokeRef1.current };
+              activeStrokeRef1.current = null;
+              smootherRefHand1.current.reset();
 
-              // Instant 60FPS canvas draw
-              redrawDrawingCanvas();
-            } else {
-              // Stroke Ended / Hovering
-              if (activeStrokeRef.current) {
-                const finishedStroke = { ...activeStrokeRef.current };
-                activeStrokeRef.current = null;
-                smootherRef.current.reset();
-
-                // Bake finished stroke into static offscreen buffer
-                const staticCanvas = staticCanvasRef.current;
-                if (staticCanvas) {
-                  const staticCtx = staticCanvas.getContext('2d');
-                  if (staticCtx) renderStroke(staticCtx, finishedStroke);
-                }
-
-                onSaveStrokeToHistory(finishedStroke);
-                redrawDrawingCanvas();
+              const staticCanvas = staticCanvasRef.current;
+              if (staticCanvas) {
+                const staticCtx = staticCanvas.getContext('2d');
+                if (staticCtx) renderStroke(staticCtx, finishedStroke);
               }
+              onSaveStrokeToHistory(finishedStroke);
             }
 
-            // Draw Hand Skeleton & Cursor Overlay
+            // Process Hand 2 Stroke
+            const det2 = detections[1];
+            if (det2 && det2.isDrawing) {
+              const rawPt: Point = det2.indexTip;
+              const smoothedPt = smootherRefHand2.current.smooth(rawPt);
+
+              if (!activeStrokeRef2.current) {
+                const newStroke: Stroke = {
+                  id: 'stroke_h2_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                  points: [smoothedPt],
+                  color,
+                  size: brushSize,
+                  opacity,
+                  brushType,
+                };
+                activeStrokeRef2.current = newStroke;
+              } else {
+                activeStrokeRef2.current.points.push(smoothedPt);
+              }
+            } else if (activeStrokeRef2.current) {
+              const finishedStroke = { ...activeStrokeRef2.current };
+              activeStrokeRef2.current = null;
+              smootherRefHand2.current.reset();
+
+              const staticCanvas = staticCanvasRef.current;
+              if (staticCanvas) {
+                const staticCtx = staticCanvas.getContext('2d');
+                if (staticCtx) renderStroke(staticCtx, finishedStroke);
+              }
+              onSaveStrokeToHistory(finishedStroke);
+            }
+
+            redrawDrawingCanvas();
+
+            // Throttle React state telemetry to 3Hz or on drawing/gesture state transitions
+            const hasDrawingStateChanged =
+              !prevDetections[0] ||
+              prevDetections[0].isDrawing !== det1.isDrawing ||
+              prevDetections[0].gesture !== det1.gesture ||
+              prevDetections.length !== detections.length;
+
+            if (hasDrawingStateChanged || now - lastReactHandUpdateRef.current > 350) {
+              onHandUpdate(det1 || detections[0], fpsRef.current);
+              lastReactHandUpdateRef.current = now;
+            }
+
+            // Draw Multi-Hand Overlay Skeletons & Cursors
             if (overlayCanvas) {
               const ctx = overlayCanvas.getContext('2d');
               if (ctx) {
-                drawHandOverlay(
+                drawMultiHandOverlay(
                   ctx,
-                  detection,
+                  detections,
                   containerSize.width,
                   containerSize.height,
                   showSkeleton,
@@ -366,21 +393,34 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
               }
             }
           } else {
-            // No Hand Detected
-            if (activeStrokeRef.current) {
-              const finishedStroke = { ...activeStrokeRef.current };
-              activeStrokeRef.current = null;
-              smootherRef.current.reset();
+            // No Hands Detected
+            if (activeStrokeRef1.current) {
+              const finishedStroke = { ...activeStrokeRef1.current };
+              activeStrokeRef1.current = null;
+              smootherRefHand1.current.reset();
 
               const staticCanvas = staticCanvasRef.current;
               if (staticCanvas) {
                 const staticCtx = staticCanvas.getContext('2d');
                 if (staticCtx) renderStroke(staticCtx, finishedStroke);
               }
-
               onSaveStrokeToHistory(finishedStroke);
-              redrawDrawingCanvas();
             }
+
+            if (activeStrokeRef2.current) {
+              const finishedStroke = { ...activeStrokeRef2.current };
+              activeStrokeRef2.current = null;
+              smootherRefHand2.current.reset();
+
+              const staticCanvas = staticCanvasRef.current;
+              if (staticCanvas) {
+                const staticCtx = staticCanvas.getContext('2d');
+                if (staticCtx) renderStroke(staticCtx, finishedStroke);
+              }
+              onSaveStrokeToHistory(finishedStroke);
+            }
+
+            redrawDrawingCanvas();
 
             const emptyDetection: HandDetectionResult = {
               landmarks: [],
@@ -392,7 +432,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
               isDrawing: false,
               handSide: 'Unknown',
             };
-            lastDetectionRef.current = emptyDetection;
+            lastDetectionsRef.current = [];
             onHandUpdate(emptyDetection, fpsRef.current);
 
             if (overlayCanvas) {
@@ -428,7 +468,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     showSkeleton,
     onHandUpdate,
     onSaveStrokeToHistory,
-    setCurrentStroke,
+    redrawDrawingCanvas,
   ]);
 
   return (
@@ -459,10 +499,10 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
       />
 
       {/* Virtual Air Touch Hotspots */}
-      {showAirButtons && lastDetectionRef.current && (
+      {showAirButtons && lastDetectionsRef.current.length > 0 && (
         <AirButtonsOverlay
-          indexTip={lastDetectionRef.current.indexTip}
-          hasHand={lastDetectionRef.current.landmarks.length > 0}
+          indexTip={lastDetectionsRef.current[0].indexTip}
+          hasHand={lastDetectionsRef.current[0].landmarks.length > 0}
           onClear={onClearCanvas}
           onUndo={onUndo}
           onSnapshot={onSnapshot}

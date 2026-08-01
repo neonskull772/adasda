@@ -20,7 +20,7 @@ export async function getHandLandmarker(onProgress?: (status: string) => void): 
       onProgress?.('Loading hand tracking neural network...');
 
       try {
-        // Try GPU delegate first for hardware acceleration
+        // Try GPU delegate first for hardware acceleration with dual hand tracking
         landmarkerInstance = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
@@ -28,10 +28,10 @@ export async function getHandLandmarker(onProgress?: (status: string) => void): 
             delegate: 'GPU',
           },
           runningMode: 'VIDEO',
-          numHands: 1,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          numHands: 2,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.4,
+          minTrackingConfidence: 0.4,
         });
       } catch (gpuErr) {
         console.warn('GPU acceleration fallback to CPU:', gpuErr);
@@ -43,10 +43,10 @@ export async function getHandLandmarker(onProgress?: (status: string) => void): 
             delegate: 'CPU',
           },
           runningMode: 'VIDEO',
-          numHands: 1,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          numHands: 2,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.4,
+          minTrackingConfidence: 0.4,
         });
       }
 
