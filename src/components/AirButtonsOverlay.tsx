@@ -146,11 +146,16 @@ export const AirButtonsOverlay: React.FC<AirButtonsOverlayProps> = ({
         const btnY = (btn.y / 100) * containerHeight;
 
         return (
-          <div
+          <button
             key={btn.id}
-            className={`absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 px-3.5 py-2 rounded-2xl border transition-all duration-200 ${
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              btn.action();
+            }}
+            className={`pointer-events-auto cursor-pointer absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 px-3.5 py-2 rounded-2xl border transition-all duration-200 ${
               btn.colorClass
-            } ${isHovered ? 'scale-110 shadow-2xl shadow-indigo-500/30 ring-2 ring-indigo-400' : 'opacity-90'}`}
+            } ${isHovered ? 'scale-110 shadow-2xl shadow-indigo-500/30 ring-2 ring-indigo-400' : 'opacity-90 hover:scale-105 hover:opacity-100'}`}
             style={{ left: `${btnX}px`, top: `${btnY}px` }}
           >
             {btn.icon}
@@ -165,7 +170,7 @@ export const AirButtonsOverlay: React.FC<AirButtonsOverlayProps> = ({
                 />
               </div>
             )}
-          </div>
+          </button>
         );
       })}
     </div>

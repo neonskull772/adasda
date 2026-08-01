@@ -20,6 +20,8 @@ import {
   Crosshair,
   Feather,
   Highlighter,
+  Shapes,
+  Flame,
 } from 'lucide-react';
 
 interface ControlPanelProps {
@@ -45,6 +47,8 @@ interface ControlPanelProps {
   setShowSkeleton: (show: boolean) => void;
   showAirButtons: boolean;
   setShowAirButtons: (show: boolean) => void;
+  enableMagicShapes?: boolean;
+  setEnableMagicShapes?: (val: boolean) => void;
 }
 
 const PRESET_COLORS = [
@@ -81,6 +85,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   setShowSkeleton,
   showAirButtons,
   setShowAirButtons,
+  enableMagicShapes = false,
+  setEnableMagicShapes,
 }) => {
   const [activeTab, setActiveTab] = useState<'brushes' | 'colors' | 'gestures' | 'canvas'>('brushes');
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -152,88 +158,112 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <div className="space-y-4">
           {/* TAB 1: BRUSHES */}
           {activeTab === 'brushes' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-1.5">
               <button
                 onClick={() => setBrushType('solid')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'solid'
                     ? 'bg-indigo-500/20 text-indigo-300 border-indigo-400/40 shadow-lg shadow-indigo-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Paintbrush className="w-4 h-4" />
+                <Paintbrush className="w-3.5 h-3.5" />
                 <span>Solid</span>
               </button>
 
               <button
                 onClick={() => setBrushType('neon')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'neon'
                     ? 'bg-purple-500/20 text-purple-300 border-purple-400/40 shadow-lg shadow-purple-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Zap className="w-4 h-4 text-purple-300" />
-                <span>Neon Glow</span>
+                <Zap className="w-3.5 h-3.5 text-purple-300" />
+                <span>Neon</span>
+              </button>
+
+              <button
+                onClick={() => setBrushType('laser')}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
+                  brushType === 'laser'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40 shadow-lg shadow-cyan-500/10'
+                    : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-cyan-300" />
+                <span>Laser</span>
               </button>
 
               <button
                 onClick={() => setBrushType('rainbow')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'rainbow'
                     ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 shadow-lg shadow-amber-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Palette className="w-4 h-4 text-amber-300" />
+                <Palette className="w-3.5 h-3.5 text-amber-300" />
                 <span>Rainbow</span>
               </button>
 
               <button
                 onClick={() => setBrushType('sparkles')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'sparkles'
                     ? 'bg-pink-500/20 text-pink-300 border-pink-400/40 shadow-lg shadow-pink-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-pink-300" />
-                <span>Sparkles</span>
+                <Sparkles className="w-3.5 h-3.5 text-pink-300" />
+                <span>Sparkle</span>
+              </button>
+
+              <button
+                onClick={() => setBrushType('particles')}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
+                  brushType === 'particles'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shadow-lg shadow-emerald-500/10'
+                    : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Dust FX</span>
               </button>
 
               <button
                 onClick={() => setBrushType('calligraphy')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'calligraphy'
                     ? 'bg-indigo-500/20 text-indigo-300 border-indigo-400/40 shadow-lg shadow-indigo-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Feather className="w-4 h-4 text-indigo-300" />
+                <Feather className="w-3.5 h-3.5 text-indigo-300" />
                 <span>Ribbon</span>
               </button>
 
               <button
                 onClick={() => setBrushType('highlighter')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'highlighter'
                     ? 'bg-yellow-500/20 text-yellow-300 border-yellow-400/40 shadow-lg shadow-yellow-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Highlighter className="w-4 h-4 text-yellow-300" />
+                <Highlighter className="w-3.5 h-3.5 text-yellow-300" />
                 <span>Marker</span>
               </button>
 
               <button
                 onClick={() => setBrushType('eraser')}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs gap-1.5 transition border ${
+                className={`flex flex-col items-center justify-center p-2 rounded-xl text-[11px] gap-1 transition border ${
                   brushType === 'eraser'
                     ? 'bg-rose-500/20 text-rose-300 border-rose-400/40 shadow-lg shadow-rose-500/10'
                     : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/10'
                 }`}
               >
-                <Eraser className="w-4 h-4 text-rose-300" />
+                <Eraser className="w-3.5 h-3.5 text-rose-300" />
                 <span>Eraser</span>
               </button>
             </div>
@@ -505,6 +535,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <Crosshair className="w-3.5 h-3.5" />
                   <span>Air Buttons</span>
                 </button>
+
+                {setEnableMagicShapes && (
+                  <button
+                    onClick={() => setEnableMagicShapes(!enableMagicShapes)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
+                      enableMagicShapes
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                        : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <Shapes className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Magic Shapes</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

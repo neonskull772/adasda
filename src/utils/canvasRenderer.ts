@@ -215,6 +215,43 @@ export function renderStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
       const radius = (Math.sin(i + Date.now() * 0.005) * 0.5 + 0.5) * stroke.size * 1.2 + 2;
       drawSparkleStar(ctx, pt.x, pt.y, radius, stroke.color);
     }
+  } else if (stroke.brushType === 'laser') {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = stroke.color;
+    ctx.shadowBlur = stroke.size * 3;
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.size * 1.8;
+
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+    }
+    ctx.stroke();
+
+    ctx.shadowBlur = stroke.size * 1.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = stroke.size * 0.6;
+    ctx.stroke();
+  } else if (stroke.brushType === 'particles') {
+    ctx.fillStyle = stroke.color;
+    ctx.strokeStyle = stroke.color;
+    for (let i = 0; i < stroke.points.length; i++) {
+      const pt = stroke.points[i];
+      const count = 3;
+      for (let j = 0; j < count; j++) {
+        const offsetAngle = (i * 13 + j * 7) % (Math.PI * 2);
+        const offsetDist = ((i * 5 + j * 11) % Math.floor(stroke.size * 1.5)) + 1;
+        const px = pt.x + Math.cos(offsetAngle) * offsetDist;
+        const py = pt.y + Math.sin(offsetAngle) * offsetDist;
+        const pSize = Math.max(1.5, (stroke.size * 0.4) * (1 - (j / count)));
+
+        ctx.beginPath();
+        ctx.arc(px, py, pSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   ctx.restore();
@@ -303,58 +340,13 @@ export function drawMultiHandOverlay(
   height: number,
   showSkeleton: boolean = true,
   isMirrored: boolean = true,
-  grippedStrokes?: Stroke[] | null,
-  rotationInfo?: { p1: Point; p2: Point; angleDeg: number } | null
+  grippedStrokes?: Stroke[] | null
 ) {
   ctx.save();
   ctx.clearRect(0, 0, width, height);
 
   if (grippedStrokes && grippedStrokes.length > 0) {
     drawGrippedStrokesHighlight(ctx, grippedStrokes);
-  }
-
-  // Draw Dual-Hand Rotation Beam & Gauge HUD
-  if (rotationInfo && rotationInfo.p1 && rotationInfo.p2) {
-    const { p1, p2, angleDeg } = rotationInfo;
-    ctx.save();
-    
-    // Laser connecting beam
-    const gradient = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-    gradient.addColorStop(0, '#a855f7');
-    gradient.addColorStop(0.5, '#ec4899');
-    gradient.addColorStop(1, '#3b82f6');
-
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 6]);
-    ctx.shadowColor = '#ec4899';
-    ctx.shadowBlur = 12;
-
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-
-    // Pivot Ring around Hand 1
-    ctx.setLineDash([]);
-    ctx.strokeStyle = '#a855f7';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(p1.x, p1.y, 24, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Hand 2 Rotation Badge
-    ctx.fillStyle = 'rgba(236, 72, 153, 0.9)';
-    ctx.font = 'bold 12px sans-serif';
-    const label = `🔄 ROTATE ${Math.round(angleDeg)}°`;
-    const tw = ctx.measureText(label).width;
-    ctx.fillRect(p2.x - tw / 2 - 8, p2.y - 32, tw + 16, 22);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, p2.x, p2.y - 17);
-
-    ctx.restore();
   }
 
   if (!detections || detections.length === 0) {

@@ -1,4 +1,4 @@
-export type BrushType = 'solid' | 'neon' | 'rainbow' | 'sparkles' | 'calligraphy' | 'highlighter' | 'eraser';
+export type BrushType = 'solid' | 'neon' | 'rainbow' | 'sparkles' | 'calligraphy' | 'highlighter' | 'laser' | 'particles' | 'eraser';
 
 export type GestureMode = 'pinch' | 'pointing' | 'peace_hover' | 'fist_grip';
 

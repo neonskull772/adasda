@@ -185,14 +185,26 @@ export function analyzeHandLandmarks(
     (isRingExtended ? 1 : 0) +
     (isPinkyExtended ? 1 : 0);
 
+  // Check curled fingers for fist detection
+  const indexWristDist = euclideanDistance(indexTip, wrist) / handScale;
+  const middleWristDist = euclideanDistance(middleTip, wrist) / handScale;
+  const ringWristDist = euclideanDistance(ringTip, wrist) / handScale;
+  const pinkyWristDist = euclideanDistance(pinkyTip, wrist) / handScale;
+
+  const curledCount =
+    (indexWristDist < 1.65 ? 1 : 0) +
+    (middleWristDist < 1.65 ? 1 : 0) +
+    (ringWristDist < 1.65 ? 1 : 0) +
+    (pinkyWristDist < 1.65 ? 1 : 0);
+
   let gesture: GestureType = 'none';
 
   if (normalizedPinchDist < pinchThreshold) {
     gesture = 'pinch';
+  } else if (curledCount >= 3 || extendedFingersCount === 0) {
+    gesture = 'fist';
   } else if (extendedFingersCount >= 4) {
     gesture = 'open_palm';
-  } else if (extendedFingersCount === 0) {
-    gesture = 'fist';
   } else if (isIndexExtended && isMiddleExtended && !isRingExtended && !isPinkyExtended) {
     gesture = 'peace';
   } else if (isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) {
@@ -275,5 +287,44 @@ export class PointSmoother {
 
   public reset() {
     this.prevPoint = null;
+  }
+}
+
+export class LandmarksSmoother {
+  private prevLandmarks: HandLandmark[] | null = null;
+
+  public smooth(rawLandmarks: HandLandmark[]): HandLandmark[] {
+    if (!rawLandmarks || rawLandmarks.length < 21) return rawLandmarks;
+    if (!this.prevLandmarks || this.prevLandmarks.length !== rawLandmarks.length) {
+      this.prevLandmarks = rawLandmarks.map((lm) => ({ ...lm }));
+      return rawLandmarks;
+    }
+
+    const smoothed: HandLandmark[] = new Array(rawLandmarks.length);
+    for (let i = 0; i < rawLandmarks.length; i++) {
+      const prev = this.prevLandmarks[i];
+      const curr = rawLandmarks[i];
+
+      const dx = curr.x - prev.x;
+      const dy = curr.y - prev.y;
+      const dz = (curr.z || 0) - (prev.z || 0);
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      // Velocity-adaptive alpha: stable when still, instant when moving
+      const alpha = Math.min(0.92, 0.42 + Math.min(0.50, dist * 15));
+
+      smoothed[i] = {
+        x: prev.x + (curr.x - prev.x) * alpha,
+        y: prev.y + (curr.y - prev.y) * alpha,
+        z: prev.z !== undefined && curr.z !== undefined ? prev.z + (curr.z - prev.z) * alpha : curr.z,
+      };
+    }
+
+    this.prevLandmarks = smoothed;
+    return smoothed;
+  }
+
+  public reset() {
+    this.prevLandmarks = null;
   }
 }

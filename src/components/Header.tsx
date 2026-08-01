@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Sparkles, Trash2, Undo2, Redo2, Download, Image as ImageIcon, HelpCircle, Hand, Bot } from 'lucide-react';
+import { Camera, Sparkles, Trash2, Undo2, Redo2, Download, Image as ImageIcon, HelpCircle, Hand, Bot, Film } from 'lucide-react';
 import { GestureType } from '../types';
 
 interface HeaderProps {
@@ -17,6 +17,7 @@ interface HeaderProps {
   onOpenGallery: () => void;
   onOpenGuide: () => void;
   onOpenAiModal: () => void;
+  onOpenReplay?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGallery,
   onOpenGuide,
   onOpenAiModal,
+  onOpenReplay,
 }) => {
   const getGestureBadge = () => {
     if (!isWebcamActive) {
@@ -163,6 +165,16 @@ export const Header: React.FC<HeaderProps> = ({
           <Download className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">EXPORT</span>
         </button>
+
+        {onOpenReplay && (
+          <button
+            onClick={onOpenReplay}
+            title="Replay Drawing Animation"
+            className="p-2.5 text-amber-300 hover:text-amber-200 backdrop-blur-xl bg-amber-500/20 hover:bg-amber-500/30 rounded-xl border border-amber-400/30 transition"
+          >
+            <Film className="w-4 h-4" />
+          </button>
+        )}
 
         <button
           onClick={onOpenGallery}

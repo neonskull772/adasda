@@ -13,6 +13,7 @@ import { WebcamCanvasOverlay } from './components/WebcamCanvasOverlay';
 import { GestureGuideModal } from './components/GestureGuideModal';
 import { ArtworkGalleryModal } from './components/ArtworkGalleryModal';
 import { AiArtworkEnhancerModal } from './components/AiArtworkEnhancerModal';
+import { ReplayModal } from './components/ReplayModal';
 
 const PRESET_COLORS_LIST = ['#06b6d4', '#a855f7', '#ec4899', '#eab308', '#10b981', '#ffffff', '#f97316', '#3b82f6'];
 
@@ -28,6 +29,7 @@ export default function App() {
   const [isMirrored, setIsMirrored] = useState<boolean>(true);
   const [showSkeleton, setShowSkeleton] = useState<boolean>(true);
   const [showAirButtons, setShowAirButtons] = useState<boolean>(true);
+  const [enableMagicShapes, setEnableMagicShapes] = useState<boolean>(false);
 
   // Hand tracking live telemetry
   const [handDetection, setHandDetection] = useState<HandDetectionResult>({
@@ -62,6 +64,7 @@ export default function App() {
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
+  const [isReplayOpen, setIsReplayOpen] = useState<boolean>(false);
 
   // Save Artworks to LocalStorage
   useEffect(() => {
@@ -116,9 +119,14 @@ export default function App() {
     });
   }, []);
 
-  // Keyboard Shortcuts (Ctrl+Z, Ctrl+Y)
+  // Keyboard Shortcuts (Ctrl+Z, Ctrl+Y, Delete/Backspace)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           handleRedo();
@@ -127,12 +135,14 @@ export default function App() {
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         handleRedo();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        handleClearCanvas();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, handleClearCanvas]);
 
   // Export & Download Artwork
   const handleSnapshot = useCallback(() => {
@@ -196,6 +206,7 @@ export default function App() {
         onOpenGallery={() => setIsGalleryOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenAiModal={() => setIsAiModalOpen(true)}
+        onOpenReplay={() => setIsReplayOpen(true)}
       />
 
       {/* Primary Air Canvas View */}
@@ -212,6 +223,7 @@ export default function App() {
           isMirrored={isMirrored}
           showSkeleton={showSkeleton}
           showAirButtons={showAirButtons}
+          enableMagicShapes={enableMagicShapes}
           onHandUpdate={handleHandUpdate}
           strokes={strokes}
           setStrokes={setStrokes}
@@ -249,6 +261,8 @@ export default function App() {
           setShowSkeleton={setShowSkeleton}
           showAirButtons={showAirButtons}
           setShowAirButtons={setShowAirButtons}
+          enableMagicShapes={enableMagicShapes}
+          setEnableMagicShapes={setEnableMagicShapes}
         />
       </main>
 
@@ -274,6 +288,14 @@ export default function App() {
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
         getCanvasImageDataUrl={getCanvasImageDataUrl}
+      />
+
+      {/* Animated Stroke Replay Modal */}
+      <ReplayModal
+        isOpen={isReplayOpen}
+        onClose={() => setIsReplayOpen(false)}
+        strokes={strokes}
+        background={background}
       />
     </div>
   );
