@@ -105,11 +105,15 @@ export function renderStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    if (stroke.points.length < 3) {
+    if (stroke.points.length === 1) {
       const b = stroke.points[0];
       ctx.arc(b.x, b.y, stroke.size / 2, 0, Math.PI * 2);
       ctx.fillStyle = stroke.color;
       ctx.fill();
+    } else if (stroke.points.length === 2) {
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      ctx.lineTo(stroke.points[1].x, stroke.points[1].y);
+      ctx.stroke();
     } else {
       ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
       for (let i = 1; i < stroke.points.length - 1; i++) {

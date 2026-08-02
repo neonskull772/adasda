@@ -112,7 +112,74 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
   const lastAirButtonUpdateRef = useRef<number>(0);
   const lastReactHandUpdateRef = useRef<number>(0);
 
+  const [dismissCameraError, setDismissCameraError] = useState(false);
   const offscreenStrokesCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isPointerDrawingRef = useRef<boolean>(false);
+  const pointerStrokeRef = useRef<Stroke | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // Ignored if pointer capture not supported
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    isPointerDrawingRef.current = true;
+    const newStroke: Stroke = {
+      id: `stroke_ptr_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      points: [{ x, y }],
+      color: colorRef.current,
+      size: brushSizeRef.current,
+      opacity: opacityRef.current,
+      brushType: brushTypeRef.current,
+    };
+    pointerStrokeRef.current = newStroke;
+    redrawDrawingCanvas();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isPointerDrawingRef.current || !pointerStrokeRef.current) return;
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    pointerStrokeRef.current.points.push({ x, y });
+    redrawDrawingCanvas();
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isPointerDrawingRef.current || !pointerStrokeRef.current) return;
+    const canvas = drawingCanvasRef.current;
+    if (canvas && canvas.hasPointerCapture(e.pointerId)) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // Ignored
+      }
+    }
+    isPointerDrawingRef.current = false;
+
+    let finishedStroke = { ...pointerStrokeRef.current };
+    pointerStrokeRef.current = null;
+
+    if (finishedStroke.points.length > 0) {
+      if (enableMagicShapesRef.current) {
+        finishedStroke = recognizeAndSmoothShape(finishedStroke);
+      }
+      strokesRef.current = [...strokesRef.current, finishedStroke];
+      setStrokes([...strokesRef.current]);
+      updateStaticBuffer(strokesRef.current);
+      onSaveStrokeToHistory(finishedStroke);
+    }
+    redrawDrawingCanvas();
+  };
 
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const backgroundRef = useRef<CanvasBackground>(background);
@@ -238,6 +305,9 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
     if (activeStrokesRef.current.Right) {
       renderStroke(ctx, activeStrokesRef.current.Right);
     }
+    if (pointerStrokeRef.current) {
+      renderStroke(ctx, pointerStrokeRef.current);
+    }
   }, [drawingCanvasRef]);
 
   useEffect(() => {
@@ -282,6 +352,7 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
   // Start Camera Stream with high FPS settings & fallback
   const startCamera = async () => {
     setCameraError(null);
+    setDismissCameraError(false);
     let stream: MediaStream | null = null;
     try {
       try {
@@ -685,7 +756,11 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
       {/* Main Drawing Canvas */}
       <canvas
         ref={drawingCanvasRef}
-        className="absolute inset-0 w-full h-full touch-none z-10"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="absolute inset-0 w-full h-full touch-none z-10 cursor-crosshair"
       />
 
       {/* Hand Skeleton Overlay & Cursor Canvas */}
@@ -721,8 +796,21 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
         </div>
       )}
 
+      {/* Dismissed Camera Banner */}
+      {cameraError && dismissCameraError && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-slate-900/90 backdrop-blur-md border border-amber-500/30 text-amber-300 text-xs px-3.5 py-1.5 rounded-full flex items-center gap-2 shadow-xl">
+          <span>Mouse / Touch Drawing Mode Active</span>
+          <button
+            onClick={() => setDismissCameraError(false)}
+            className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-semibold px-2 py-0.5 rounded-md text-[11px] transition"
+          >
+            Camera Info
+          </button>
+        </div>
+      )}
+
       {/* Camera Error Modal */}
-      {cameraError && !isLoadingModel && (
+      {cameraError && !isLoadingModel && !dismissCameraError && (
         <div className="absolute inset-0 z-30 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto my-auto rounded-3xl border border-rose-500/20 shadow-2xl">
           <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
             <AlertTriangle className="w-6 h-6" />
@@ -730,24 +818,33 @@ export const WebcamCanvasOverlay: React.FC<WebcamCanvasOverlayProps> = ({
           <div>
             <h2 className="text-lg font-bold text-white">Camera Permission Required</h2>
             <p className="text-xs text-slate-300 mt-2 leading-relaxed">{cameraError}</p>
-            <p className="text-[11px] text-slate-400 mt-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-              💡 <strong className="text-slate-200">Tip:</strong> If using an embedded window or preview iframe, open the app in a new tab to grant camera permission directly.
+            <p className="text-[11px] text-slate-400 mt-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-left">
+              💡 <strong className="text-slate-200">How to grant camera access:</strong><br />
+              1. Click the camera/lock icon in your browser address bar and select <strong>Allow</strong>.<br />
+              2. Or click <strong>Open in New Tab</strong> to run directly in a full browser tab.<br />
+              3. Or click below to draw using <strong>Mouse or Touchscreen</strong>!
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full pt-1">
             <button
               onClick={startCamera}
-              className="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-1.5"
             >
-              <Camera className="w-4 h-4" /> Grant Permission & Retry
+              <Camera className="w-4 h-4" /> Grant & Retry
             </button>
             <button
               onClick={() => window.open(window.location.href, '_blank')}
-              className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl transition border border-slate-700 flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl transition border border-slate-700 flex items-center justify-center gap-1.5"
             >
-              <ExternalLink className="w-4 h-4" /> Open in New Tab
+              <ExternalLink className="w-4 h-4" /> Open New Tab
             </button>
           </div>
+          <button
+            onClick={() => setDismissCameraError(true)}
+            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium text-xs rounded-xl transition border border-slate-800"
+          >
+            Use Mouse / Touch Drawing Instead
+          </button>
         </div>
       )}
     </div>
